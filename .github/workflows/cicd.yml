@@ -40,17 +40,15 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push
-        id: build
-        run: |
-          IMAGE_BASE=${{ secrets.DOCKER_REGISTRY }}/${{ secrets.REGISTRY_PROJECT }}/ticketrush_user_api
+    - name: Build and push
+      id: build
+      run: |
+        IMAGE=${{ secrets.DOCKER_REGISTRY }}/${{ secrets.REGISTRY_PROJECT }}/ticketrush-user-api:latest
 
-          IMAGE_LATEST=${IMAGE_BASE}:latest
+        echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
-          echo "image=$IMAGE_LATEST" >> $GITHUB_OUTPUT
-
-          docker build -t $IMAGE_LATEST .
-          docker push $IMAGE_LATEST
+        docker build -t $IMAGE .
+        docker push $IMAGE
 
   deploy:
     runs-on: ubuntu-latest
