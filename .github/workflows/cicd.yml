@@ -17,8 +17,6 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: TicketRushPlatform_User_Service/requirements.txt
-
-      - working-directory: TicketRushPlatform_User_Service
         run: |
           pip install -r requirements.txt
           pip install pytest
