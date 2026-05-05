@@ -43,11 +43,11 @@ jobs:
       - name: Build and push
         id: build
         run: |
-          IMAGE_BASE=${{ secrets.DOCKER_REGISTRY }}/${{ secrets.REGISTRY_PROJECT }}/ticketrush-user_api
+          IMAGE_BASE=${{ secrets.DOCKER_REGISTRY }}/${{ secrets.REGISTRY_PROJECT }}/ticketrush_user_api
 
           IMAGE_LATEST=${IMAGE_BASE}:latest
 
-          echo "image=$IMAGE_SHA" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE_LATEST" >> $GITHUB_OUTPUT
 
           docker build -t $IMAGE_LATEST .
           docker push $IMAGE_LATEST
