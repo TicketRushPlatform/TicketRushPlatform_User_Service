@@ -1,17 +1,21 @@
+from argon2 import PasswordHasher
 from flask import Blueprint, current_app, g, request
 
-from app.decorators import require_auth
+from app.decorators import require_auth, require_permission
 from app.errors import AppError
 from app.extensions import db
 from app.repositories import UserRepository
-from app.schemas import UpdateMeSchema, user_to_dict
+from app.models import Provider, Role, Status, User
+from app.schemas import AdminCreateUserSchema, AdminUpdateUserSchema, UpdateMeSchema, user_to_dict
 from app.services.storage_service import StorageService
 
 bp = Blueprint("users", __name__, url_prefix="/users")
+hasher = PasswordHasher()
 
 
 @bp.get("/me")
 @require_auth()
+@require_permission("PROFILE_VIEW")
 def me():
     """Get current user profile.
 
@@ -39,6 +43,7 @@ def me():
 
 @bp.patch("/me")
 @require_auth()
+@require_permission("PROFILE_EDIT")
 def update_me():
     """Update current user profile.
 
@@ -79,6 +84,7 @@ def update_me():
 
 @bp.post("/me/media")
 @require_auth()
+@require_permission("PROFILE_EDIT")
 def upload_me_media():
     """Upload media for current user.
 
@@ -174,3 +180,216 @@ def get_user(user_id):
     if user is None:
         raise AppError("USER_NOT_FOUND", "User was not found.", 404)
     return user_to_dict(user)
+
+
+@bp.get("")
+@require_auth(admin=True)
+def list_users():
+    """List all users (admin only).
+
+        ---
+        get:
+            tags:
+                - Users
+            summary: List all users (admin only)
+            security:
+                - BearerAuth: []
+            responses:
+                '200':
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: '#/components/schemas/UserSchema'
+                '401':
+                    $ref: '#/components/responses/ErrorResponse'
+                '403':
+                    $ref: '#/components/responses/ErrorResponse'
+    """
+    users = UserRepository().list_all()
+    return [user_to_dict(user) for user in users]
+
+
+@bp.post("")
+@require_auth(admin=True)
+def create_user():
+    """Create user (admin only).
+
+        ---
+        post:
+            tags:
+                - Users
+            summary: Create user (admin only)
+            security:
+                - BearerAuth: []
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            required:
+                                - email
+                                - password
+                                - full_name
+                            properties:
+                                email:
+                                    type: string
+                                    format: email
+                                password:
+                                    type: string
+                                    minLength: 8
+                                full_name:
+                                    type: string
+                                role:
+                                    type: string
+                                    enum: [USER, ADMIN]
+                                status:
+                                    type: string
+                                    enum: [ACTIVE, BLOCKED]
+            responses:
+                '201':
+                    description: Created
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserSchema'
+                '400':
+                    $ref: '#/components/responses/ErrorResponse'
+                '401':
+                    $ref: '#/components/responses/ErrorResponse'
+                '403':
+                    $ref: '#/components/responses/ErrorResponse'
+                '409':
+                    $ref: '#/components/responses/ErrorResponse'
+    """
+    data = AdminCreateUserSchema().load(request.get_json(silent=True) or {})
+    repo = UserRepository()
+    normalized_email = data["email"].lower()
+    if repo.get_by_email(normalized_email):
+        raise AppError("EMAIL_ALREADY_EXISTS", "Email is already registered.", 409)
+
+    user = User(
+        email=normalized_email,
+        password_hash=hasher.hash(data["password"]),
+        full_name=data["full_name"],
+        provider=Provider.LOCAL,
+        role=Role(data["role"]),
+        status=Status(data["status"]),
+    )
+    repo.add(user)
+    db.session.commit()
+    return user_to_dict(user), 201
+
+
+@bp.patch("/<uuid:user_id>")
+@require_auth(admin=True)
+def update_user(user_id):
+    """Update user by id (admin only).
+
+        ---
+        patch:
+            tags:
+                - Users
+            summary: Update user by id (admin only)
+            security:
+                - BearerAuth: []
+            parameters:
+                - in: path
+                  name: user_id
+                  required: true
+                  schema:
+                    type: string
+                    format: uuid
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            properties:
+                                full_name:
+                                    type: string
+                                role:
+                                    type: string
+                                    enum: [USER, ADMIN]
+                                status:
+                                    type: string
+                                    enum: [ACTIVE, BLOCKED]
+            responses:
+                '200':
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserSchema'
+                '400':
+                    $ref: '#/components/responses/ErrorResponse'
+                '401':
+                    $ref: '#/components/responses/ErrorResponse'
+                '403':
+                    $ref: '#/components/responses/ErrorResponse'
+                '404':
+                    $ref: '#/components/responses/ErrorResponse'
+    """
+    repo = UserRepository()
+    user = repo.get_by_id(user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND", "User was not found.", 404)
+
+    payload = AdminUpdateUserSchema().load(request.get_json(silent=True) or {})
+    if not payload:
+        raise AppError("VALIDATION_ERROR", "At least one field is required.", 400)
+
+    if "full_name" in payload:
+        user.full_name = payload["full_name"]
+    if "role" in payload:
+        user.role = Role(payload["role"])
+    if "status" in payload:
+        user.status = Status(payload["status"])
+
+    db.session.commit()
+    return user_to_dict(user)
+
+
+@bp.delete("/<uuid:user_id>")
+@require_auth(admin=True)
+def delete_user(user_id):
+    """Delete user by id (admin only).
+
+        ---
+        delete:
+            tags:
+                - Users
+            summary: Delete user by id (admin only)
+            security:
+                - BearerAuth: []
+            parameters:
+                - in: path
+                  name: user_id
+                  required: true
+                  schema:
+                    type: string
+                    format: uuid
+            responses:
+                '204':
+                    description: Deleted
+                '401':
+                    $ref: '#/components/responses/ErrorResponse'
+                '403':
+                    $ref: '#/components/responses/ErrorResponse'
+                '404':
+                    $ref: '#/components/responses/ErrorResponse'
+    """
+    repo = UserRepository()
+    user = repo.get_by_id(user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND", "User was not found.", 404)
+    if user.id == g.current_user.id:
+        raise AppError("FORBIDDEN", "You cannot delete your own account.", 403)
+
+    repo.delete(user)
+    db.session.commit()
+    return "", 204

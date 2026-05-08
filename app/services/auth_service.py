@@ -2,7 +2,7 @@ from http import HTTPStatus
 from uuid import uuid4
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError
+from argon2.exceptions import InvalidHashError, VerifyMismatchError, VerificationError
 from sqlalchemy.exc import IntegrityError
 
 from app.errors import AppError
@@ -40,13 +40,21 @@ class AuthService:
 
     def login(self, data):
         user = self.users.get_by_email(data["email"])
-        if user is None or not user.password_hash:
+        if user is None:
+            raise AppError("INVALID_CREDENTIALS", "Email or password is incorrect.", HTTPStatus.UNAUTHORIZED)
+        if not user.password_hash:
+            if user.provider != Provider.LOCAL:
+                raise AppError(
+                    "PASSWORD_LOGIN_NOT_AVAILABLE",
+                    "This account uses social login. Please sign in with your linked provider.",
+                    HTTPStatus.BAD_REQUEST,
+                )
             raise AppError("INVALID_CREDENTIALS", "Email or password is incorrect.", HTTPStatus.UNAUTHORIZED)
         if user.status != Status.ACTIVE:
             raise AppError("USER_BLOCKED", "User account is not active.", HTTPStatus.FORBIDDEN)
         try:
             self.hasher.verify(user.password_hash, data["password"])
-        except (VerifyMismatchError, VerificationError) as exc:
+        except (InvalidHashError, VerifyMismatchError, VerificationError) as exc:
             raise AppError("INVALID_CREDENTIALS", "Email or password is incorrect.", HTTPStatus.UNAUTHORIZED) from exc
 
         pair = self.tokens.issue_pair(user)

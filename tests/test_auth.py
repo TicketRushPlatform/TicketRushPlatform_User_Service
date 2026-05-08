@@ -34,6 +34,18 @@ def test_login_rejects_invalid_password(client):
     assert response.get_json()["code"] == "INVALID_CREDENTIALS"
 
 
+def test_login_handles_invalid_password_hash_without_500(client):
+    register(client)
+    user = User.query.filter_by(email="ada@example.com").one()
+    user.password_hash = "not-a-valid-argon2-hash"
+    db.session.commit()
+
+    response = client.post("/auth/login", json={"email": "ada@example.com", "password": "correct-password"})
+
+    assert response.status_code == 401
+    assert response.get_json()["code"] == "INVALID_CREDENTIALS"
+
+
 def test_oauth_google_links_existing_email_without_duplicate(client, monkeypatch):
     register(client, email="grace@example.com")
 
@@ -50,6 +62,20 @@ def test_oauth_google_links_existing_email_without_duplicate(client, monkeypatch
     assert user.provider == Provider.GOOGLE
     assert user.provider_id == "google-123"
     assert response.get_json()["refresh_token"]
+
+
+def test_password_login_reports_social_account_for_oauth_user(client, monkeypatch):
+    def verified_google(_self, _payload):
+        return OAuthProfile("google-456", "oauth-only@example.com", "OAuth User", "https://example.com/avatar.png")
+
+    monkeypatch.setattr(OAuthVerifier, "verify_google", verified_google)
+
+    oauth_login = client.post("/auth/oauth/google", json={"id_token": "verified-by-provider"})
+    assert oauth_login.status_code == 200
+
+    password_login = client.post("/auth/login", json={"email": "oauth-only@example.com", "password": "does-not-matter"})
+    assert password_login.status_code == 400
+    assert password_login.get_json()["code"] == "PASSWORD_LOGIN_NOT_AVAILABLE"
 
 
 def test_refresh_rotates_token_and_reuse_revokes_sessions(client):

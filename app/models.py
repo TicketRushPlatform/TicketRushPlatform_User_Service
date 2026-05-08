@@ -16,6 +16,9 @@ class Provider(str, enum.Enum):
 class Role(str, enum.Enum):
     USER = "USER"
     ADMIN = "ADMIN"
+    PROFILE_OWNER = "PROFILE_OWNER"
+    EVENT_OWNER = "EVENT_OWNER"
+    BOOKING_OWNER = "BOOKING_OWNER"
 
 
 class Status(str, enum.Enum):
@@ -64,3 +67,32 @@ class RefreshToken(db.Model):
     revoked = db.Column(db.Boolean, nullable=False, default=False)
 
     user = db.relationship("User", lazy="joined")
+
+
+class RoleDefinition(db.Model):
+    __tablename__ = "role_definitions"
+
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    permissions = db.relationship(
+        "RolePermission",
+        back_populates="role",
+        cascade="all, delete-orphan",
+        lazy="joined",
+    )
+
+
+class RolePermission(db.Model):
+    __tablename__ = "role_permissions"
+
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    role_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey("role_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    permission = db.Column(db.String(128), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    role = db.relationship("RoleDefinition", back_populates="permissions")
+
+    __table_args__ = (Index("ux_role_permission", "role_id", "permission", unique=True),)

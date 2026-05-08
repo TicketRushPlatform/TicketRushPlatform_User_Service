@@ -42,6 +42,34 @@ class UpdateMeSchema(Schema):
     bio = fields.String(allow_none=True, validate=validate.Length(max=500))
 
 
+ALLOWED_USER_ROLES = ["USER", "ADMIN", "PROFILE_OWNER", "EVENT_OWNER", "BOOKING_OWNER"]
+
+
+class AdminUpdateUserSchema(Schema):
+    full_name = fields.String(validate=validate.Length(min=1, max=120))
+    role = fields.String(validate=validate.OneOf(ALLOWED_USER_ROLES))
+    status = fields.String(validate=validate.OneOf(["ACTIVE", "BLOCKED"]))
+
+
+class AdminCreateUserSchema(Schema):
+    email = fields.Email(required=True)
+    password = fields.String(required=True, validate=validate.Length(min=8, max=128))
+    full_name = fields.String(required=True, validate=validate.Length(min=1, max=120))
+    role = fields.String(load_default="PROFILE_OWNER", validate=validate.OneOf(ALLOWED_USER_ROLES))
+    status = fields.String(load_default="ACTIVE", validate=validate.OneOf(["ACTIVE", "BLOCKED"]))
+
+
+class RoleCreateSchema(Schema):
+    name = fields.String(required=True, validate=validate.Length(min=2, max=64))
+    permissions = fields.List(fields.String(validate=validate.Length(min=2, max=128)), load_default=list)
+
+
+class RoleUpdateSchema(Schema):
+    permissions = fields.List(fields.String(validate=validate.Length(min=2, max=128)), load_default=None, allow_none=True)
+    permissions_add = fields.List(fields.String(validate=validate.Length(min=2, max=128)), load_default=list)
+    permissions_remove = fields.List(fields.String(validate=validate.Length(min=2, max=128)), load_default=list)
+
+
 class TokenPairSchema(Schema):
     access_token = fields.String(required=True)
     refresh_token = fields.String(required=True)
