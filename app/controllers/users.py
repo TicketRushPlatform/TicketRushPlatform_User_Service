@@ -393,3 +393,49 @@ def delete_user(user_id):
     repo.delete(user)
     db.session.commit()
     return "", 204
+
+
+@bp.get("/stats")
+@require_auth(admin=True)
+def get_user_stats():
+    """Get user statistics (admin only).
+
+        ---
+        get:
+            tags:
+                - Users
+            summary: Get user statistics (admin only)
+            security:
+                - BearerAuth: []
+            responses:
+                '200':
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    total_users:
+                                        type: integer
+                                    active_users:
+                                        type: integer
+                                    blocked_users:
+                                        type: integer
+                                    admin_count:
+                                        type: integer
+                '401':
+                    $ref: '#/components/responses/ErrorResponse'
+                '403':
+                    $ref: '#/components/responses/ErrorResponse'
+    """
+    from app.models import Status, Role
+    total_users = db.session.query(db.func.count(User.id)).scalar() or 0
+    active_users = db.session.query(db.func.count(User.id)).filter(User.status == Status.ACTIVE).scalar() or 0
+    blocked_users = db.session.query(db.func.count(User.id)).filter(User.status == Status.BLOCKED).scalar() or 0
+    admin_count = db.session.query(db.func.count(User.id)).filter(User.role == Role.ADMIN).scalar() or 0
+    return {
+        "total_users": total_users,
+        "active_users": active_users,
+        "blocked_users": blocked_users,
+        "admin_count": admin_count,
+    }
