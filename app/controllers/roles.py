@@ -28,20 +28,11 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         "BOOKING_CANCEL",
     ],
 }
-ALLOWED_PERMISSIONS = sorted(
-    {
-        "PROFILE_VIEW",
-        "PROFILE_EDIT",
-        "EVENT_VIEW",
-        "BOOKING_CREATE",
-        "EVENT_CREATE",
-        "EVENT_UPDATE",
-        "EVENT_DELETE",
-        "BOOKING_VIEW",
-        "BOOKING_CONFIRM",
-        "BOOKING_CANCEL",
-    }
-)
+ALLOWED_PERMISSIONS = sorted({
+    "EVENT_CREATE",
+    "EVENT_MANAGE_ALL",
+    "USER_MANAGE_ALL",
+})
 
 
 def normalize_role_name(name: str) -> str:
