@@ -19,10 +19,12 @@ def create_app(config: Config | None = None):
     limiter.init_app(app)
 
     from app.controllers.auth import bp as auth_bp
+    from app.controllers.notifications import bp as notifications_bp
     from app.controllers.roles import bp as roles_bp
     from app.controllers.users import bp as users_bp
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(notifications_bp)
     app.register_blueprint(roles_bp)
     app.register_blueprint(users_bp)
     register_error_handlers(app)

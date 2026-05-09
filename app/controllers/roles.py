@@ -159,20 +159,3 @@ def update_role(role_name: str):
     return serialize_role(role, repo)
 
 
-@bp.delete("/<role_name>")
-@require_auth(admin=True)
-def delete_role(role_name: str):
-    """Delete role (admin only)."""
-    repo = RoleRepository()
-    ensure_default_roles(repo)
-    normalized = normalize_role_name(role_name)
-    if normalized in SYSTEM_ROLES:
-        raise AppError("FORBIDDEN", "System roles cannot be deleted.", 403)
-
-    role = repo.get_by_name(normalized)
-    if role is None:
-        raise AppError("ROLE_NOT_FOUND", "Role was not found.", 404)
-
-    repo.delete(role)
-    db.session.commit()
-    return "", 204

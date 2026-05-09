@@ -439,3 +439,116 @@ def get_user_stats():
         "blocked_users": blocked_users,
         "admin_count": admin_count,
     }
+
+
+@bp.get("/<uuid:user_id>/roles")
+@require_auth(admin=True)
+def list_user_roles(user_id):
+    """List roles assigned to a user (admin only)."""
+    from app.repositories import UserRoleRepository, RoleRepository
+    user = UserRepository().get_by_id(user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND", "User was not found.", 404)
+
+    assignments = UserRoleRepository().list_for_user(user_id)
+    role_repo = RoleRepository()
+    result = []
+    for assignment in assignments:
+        role_def = assignment.role_definition
+        if role_def:
+            result.append({
+                "role_name": role_def.name,
+                "permissions": role_repo.list_permissions(role_def),
+                "assigned_at": assignment.assigned_at.isoformat(),
+                "assigned_by": str(assignment.assigned_by) if assignment.assigned_by else None,
+            })
+    return result
+
+
+@bp.post("/<uuid:user_id>/roles")
+@require_auth(admin=True)
+def assign_user_role(user_id):
+    """Assign a role to a user (admin only). Sends a notification to the user."""
+    from app.models import Notification
+    from app.repositories import UserRoleRepository, RoleRepository, NotificationRepository
+
+    user = UserRepository().get_by_id(user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND", "User was not found.", 404)
+
+    payload = request.get_json(silent=True) or {}
+    role_name = (payload.get("role_name") or "").strip().upper()
+    if not role_name:
+        raise AppError("VALIDATION_ERROR", "role_name is required.", 400)
+
+    role_repo = RoleRepository()
+    role_def = role_repo.get_by_name(role_name)
+    if role_def is None:
+        raise AppError("ROLE_NOT_FOUND", f"Role '{role_name}' does not exist.", 404)
+
+    user_role_repo = UserRoleRepository()
+    if user_role_repo.get_assignment(user_id, role_def.id):
+        raise AppError("ROLE_ALREADY_ASSIGNED", f"User already has the role '{role_name}'.", 409)
+
+    admin_user = g.current_user
+    user_role_repo.assign(user_id, role_def.id, assigned_by=admin_user.id)
+
+    # Build permission list for the notification
+    permissions = role_repo.list_permissions(role_def)
+    permissions_text = ", ".join(permissions) if permissions else "No specific permissions"
+
+    # Create notification for the user
+    notification = Notification(
+        user_id=user_id,
+        title=f"New role assigned: {role_name}",
+        message=f"You have been assigned the role '{role_name}' by an administrator. Your new permissions include: {permissions_text}.",
+        tone="SUCCESS",
+        link="/profile",
+    )
+    NotificationRepository().add(notification)
+
+    db.session.commit()
+    return {
+        "role_name": role_def.name,
+        "permissions": permissions,
+        "assigned_at": notification.created_at.isoformat(),
+        "assigned_by": str(admin_user.id),
+    }, 201
+
+
+@bp.delete("/<uuid:user_id>/roles/<role_name>")
+@require_auth(admin=True)
+def remove_user_role(user_id, role_name):
+    """Remove a role from a user (admin only). Sends a notification to the user."""
+    from app.models import Notification
+    from app.repositories import UserRoleRepository, RoleRepository, NotificationRepository
+
+    user = UserRepository().get_by_id(user_id)
+    if user is None:
+        raise AppError("USER_NOT_FOUND", "User was not found.", 404)
+
+    normalized_name = role_name.strip().upper()
+    role_repo = RoleRepository()
+    role_def = role_repo.get_by_name(normalized_name)
+    if role_def is None:
+        raise AppError("ROLE_NOT_FOUND", f"Role '{normalized_name}' does not exist.", 404)
+
+    user_role_repo = UserRoleRepository()
+    assignment = user_role_repo.get_assignment(user_id, role_def.id)
+    if assignment is None:
+        raise AppError("ROLE_NOT_ASSIGNED", f"User does not have the role '{normalized_name}'.", 404)
+
+    user_role_repo.remove(assignment)
+
+    # Notify user about role removal
+    notification = Notification(
+        user_id=user_id,
+        title=f"Role removed: {normalized_name}",
+        message=f"The role '{normalized_name}' has been removed from your account by an administrator.",
+        tone="WARNING",
+        link="/profile",
+    )
+    NotificationRepository().add(notification)
+
+    db.session.commit()
+    return "", 204

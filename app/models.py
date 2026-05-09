@@ -55,6 +55,20 @@ class User(db.Model):
         Index("ux_users_provider_id_present", "provider", "provider_id", unique=True, postgresql_where=provider_id.isnot(None)),
     )
 
+    assigned_roles = db.relationship(
+        "UserRole",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="joined",
+    )
+
+    notifications = db.relationship(
+        "Notification",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
 
 class RefreshToken(db.Model):
     __tablename__ = "refresh_tokens"
@@ -96,3 +110,33 @@ class RolePermission(db.Model):
     role = db.relationship("RoleDefinition", back_populates="permissions")
 
     __table_args__ = (Index("ux_role_permission", "role_id", "permission", unique=True),)
+
+
+class UserRole(db.Model):
+    __tablename__ = "user_roles"
+
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey("role_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    assigned_by = db.Column(db.Uuid(as_uuid=True), nullable=True)
+
+    user = db.relationship("User", back_populates="assigned_roles")
+    role_definition = db.relationship("RoleDefinition", lazy="joined")
+
+    __table_args__ = (Index("ux_user_roles_user_role", "user_id", "role_id", unique=True),)
+
+
+class Notification(db.Model):
+    __tablename__ = "notifications"
+
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    tone = db.Column(db.String(20), nullable=False, default="INFO")
+    read = db.Column(db.Boolean, nullable=False, default=False)
+    link = db.Column(db.String(512), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    user = db.relationship("User", back_populates="notifications")

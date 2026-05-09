@@ -100,6 +100,16 @@ class ErrorSchema(Schema):
 
 
 def user_to_dict(user):
+    # Collect dynamically assigned roles and their permissions
+    assigned_role_names = []
+    effective_permissions = set()
+    for assignment in getattr(user, "assigned_roles", []):
+        role_def = assignment.role_definition
+        if role_def:
+            assigned_role_names.append(role_def.name)
+            for rp in role_def.permissions:
+                effective_permissions.add(rp.permission)
+
     return {
         "id": str(user.id),
         "email": user.email,
@@ -113,6 +123,8 @@ def user_to_dict(user):
         "provider": user.provider.value,
         "role": user.role.value,
         "status": user.status.value,
+        "assigned_roles": sorted(assigned_role_names),
+        "permissions": sorted(effective_permissions),
         "created_at": user.created_at.isoformat(),
         "updated_at": user.updated_at.isoformat(),
     }
