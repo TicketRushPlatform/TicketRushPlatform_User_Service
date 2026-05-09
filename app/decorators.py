@@ -5,7 +5,7 @@ from flask import current_app, g, request
 
 from app.errors import AppError
 from app.models import Role, Status
-from app.repositories import RoleRepository, UserRepository
+from app.repositories import RoleRepository, UserRepository, UserRoleRepository
 from app.services.token_service import TokenService, parse_uuid
 
 LEGACY_ROLE_PERMISSIONS = {
@@ -53,6 +53,12 @@ def require_permission(permission: str):
             if user.role == Role.ADMIN:
                 return handler(*args, **kwargs)
 
+            # Check permissions from dynamic role assignments (user_roles table)
+            dynamic_permissions = UserRoleRepository().get_effective_permissions(user.id)
+            if normalized_permission in dynamic_permissions:
+                return handler(*args, **kwargs)
+
+            # Fallback: check legacy role-based permissions
             role_name = user.role.value if hasattr(user.role, "value") else str(user.role)
             if role_name == "USER":
                 role_name = "PROFILE_OWNER"

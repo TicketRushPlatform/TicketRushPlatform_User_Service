@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Provider, RefreshToken, RoleDefinition, RolePermission, User
+from app.models import Notification, Provider, RefreshToken, RoleDefinition, RolePermission, User, UserRole
 
 
 class UserRepository:
@@ -42,6 +42,9 @@ class RoleRepository:
     def get_by_name(self, name: str):
         return RoleDefinition.query.filter(db.func.lower(RoleDefinition.name) == name.lower()).one_or_none()
 
+    def get_by_id(self, role_id):
+        return db.session.get(RoleDefinition, role_id)
+
     def add(self, role: RoleDefinition):
         db.session.add(role)
         return role
@@ -66,3 +69,59 @@ class RoleRepository:
         for permission in sorted(target_permissions - current_permissions):
             role.permissions.append(RolePermission(permission=permission))
         return role
+
+
+class UserRoleRepository:
+    def list_for_user(self, user_id):
+        return UserRole.query.filter_by(user_id=user_id).all()
+
+    def get_assignment(self, user_id, role_id):
+        return UserRole.query.filter_by(user_id=user_id, role_id=role_id).one_or_none()
+
+    def assign(self, user_id, role_id, assigned_by=None):
+        user_role = UserRole(user_id=user_id, role_id=role_id, assigned_by=assigned_by)
+        db.session.add(user_role)
+        return user_role
+
+    def remove(self, user_role: UserRole):
+        db.session.delete(user_role)
+
+    def get_effective_permissions(self, user_id):
+        """Return the set of all permissions for a user across all assigned roles."""
+        assignments = self.list_for_user(user_id)
+        permissions = set()
+        for assignment in assignments:
+            role_def = assignment.role_definition
+            if role_def:
+                for rp in role_def.permissions:
+                    permissions.add(rp.permission)
+        return permissions
+
+
+class NotificationRepository:
+    def list_for_user(self, user_id, limit=50):
+        return (
+            Notification.query
+            .filter_by(user_id=user_id)
+            .order_by(Notification.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+    def get_by_id(self, notification_id):
+        return db.session.get(Notification, notification_id)
+
+    def add(self, notification: Notification):
+        db.session.add(notification)
+        return notification
+
+    def mark_read(self, notification: Notification):
+        notification.read = True
+
+    def delete(self, notification: Notification):
+        db.session.delete(notification)
+
+    def delete_all_for_user(self, user_id):
+        Notification.query.filter_by(user_id=user_id).delete()
+    def count_unread(self, user_id):
+        return Notification.query.filter_by(user_id=user_id, read=False).count()
