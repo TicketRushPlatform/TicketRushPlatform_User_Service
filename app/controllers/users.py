@@ -15,7 +15,6 @@ hasher = PasswordHasher()
 
 @bp.get("/me")
 @require_auth()
-@require_permission("PROFILE_VIEW")
 def me():
     """Get current user profile.
 
@@ -43,7 +42,6 @@ def me():
 
 @bp.patch("/me")
 @require_auth()
-@require_permission("PROFILE_EDIT")
 def update_me():
     """Update current user profile.
 
@@ -84,7 +82,6 @@ def update_me():
 
 @bp.post("/me/media")
 @require_auth()
-@require_permission("PROFILE_EDIT")
 def upload_me_media():
     """Upload media for current user.
 

@@ -9,10 +9,8 @@ from app.repositories import RoleRepository, UserRepository, UserRoleRepository
 from app.services.token_service import TokenService, parse_uuid
 
 LEGACY_ROLE_PERMISSIONS = {
-    "PROFILE_OWNER": {"PROFILE_VIEW", "PROFILE_EDIT"},
-    "EVENT_OWNER": {"EVENT_VIEW", "EVENT_CREATE", "EVENT_UPDATE", "EVENT_DELETE"},
-    "BOOKING_OWNER": {"BOOKING_VIEW", "BOOKING_CREATE", "BOOKING_CONFIRM", "BOOKING_CANCEL"},
-    "USER": {"PROFILE_VIEW", "PROFILE_EDIT"},
+    "ORGANIZER": {"EVENT_CREATE"},
+    "ADMIN": {"EVENT_MANAGE_ALL", "USER_MANAGE_ALL"},
 }
 
 
@@ -60,8 +58,6 @@ def require_permission(permission: str):
 
             # Fallback: check legacy role-based permissions
             role_name = user.role.value if hasattr(user.role, "value") else str(user.role)
-            if role_name == "USER":
-                role_name = "PROFILE_OWNER"
             role_def = RoleRepository().get_by_name(role_name)
             if role_def is None:
                 role_permissions = LEGACY_ROLE_PERMISSIONS.get(role_name, set())

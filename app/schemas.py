@@ -42,7 +42,7 @@ class UpdateMeSchema(Schema):
     bio = fields.String(allow_none=True, validate=validate.Length(max=500))
 
 
-ALLOWED_USER_ROLES = ["USER", "ADMIN", "PROFILE_OWNER", "EVENT_OWNER", "BOOKING_OWNER"]
+ALLOWED_USER_ROLES = ["USER", "ADMIN"]
 
 
 class AdminUpdateUserSchema(Schema):
@@ -55,7 +55,7 @@ class AdminCreateUserSchema(Schema):
     email = fields.Email(required=True)
     password = fields.String(required=True, validate=validate.Length(min=8, max=128))
     full_name = fields.String(required=True, validate=validate.Length(min=1, max=120))
-    role = fields.String(load_default="PROFILE_OWNER", validate=validate.OneOf(ALLOWED_USER_ROLES))
+    role = fields.String(load_default="USER", validate=validate.OneOf(ALLOWED_USER_ROLES))
     status = fields.String(load_default="ACTIVE", validate=validate.OneOf(["ACTIVE", "BLOCKED"]))
 
 

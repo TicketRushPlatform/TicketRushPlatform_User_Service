@@ -16,9 +16,6 @@ class Provider(str, enum.Enum):
 class Role(str, enum.Enum):
     USER = "USER"
     ADMIN = "ADMIN"
-    PROFILE_OWNER = "PROFILE_OWNER"
-    EVENT_OWNER = "EVENT_OWNER"
-    BOOKING_OWNER = "BOOKING_OWNER"
 
 
 class Status(str, enum.Enum):

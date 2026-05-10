@@ -9,23 +9,14 @@ from app.schemas import RoleCreateSchema, RoleUpdateSchema
 
 bp = Blueprint("roles", __name__, url_prefix="/roles")
 
-SYSTEM_ROLES = {"PROFILE_OWNER", "EVENT_OWNER", "BOOKING_OWNER"}
+SYSTEM_ROLES = {"ADMIN", "ORGANIZER"}
 DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
-    "PROFILE_OWNER": [
-        "PROFILE_VIEW",
-        "PROFILE_EDIT",
-    ],
-    "EVENT_OWNER": [
-        "EVENT_VIEW",
+    "ORGANIZER": [
         "EVENT_CREATE",
-        "EVENT_UPDATE",
-        "EVENT_DELETE",
     ],
-    "BOOKING_OWNER": [
-        "BOOKING_VIEW",
-        "BOOKING_CREATE",
-        "BOOKING_CONFIRM",
-        "BOOKING_CANCEL",
+    "ADMIN": [
+        "EVENT_MANAGE_ALL",
+        "USER_MANAGE_ALL",
     ],
 }
 ALLOWED_PERMISSIONS = sorted({
