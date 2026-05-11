@@ -33,6 +33,15 @@ class Config:
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
     S3_PUBLIC_BASE_URL: str = os.getenv("S3_PUBLIC_BASE_URL", "http://localhost:9000/ticketrush-media")
     UPLOAD_MAX_BYTES: int = int(os.getenv("UPLOAD_MAX_BYTES", str(50 * 1024 * 1024)))
+    APP_PUBLIC_URL: str = os.getenv("APP_PUBLIC_URL", os.getenv("VITE_OAUTH_REDIRECT_BASE_URL", "http://localhost:3000"))
+    PASSWORD_RESET_TOKEN_TTL_SECONDS: int = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_SECONDS", "1800"))
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", os.getenv("SMTP_USERNAME", "no-reply@ticketrush.local"))
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "TicketRush")
+    SMTP_USE_TLS: bool = _bool(os.getenv("SMTP_USE_TLS"), True)
 
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:

@@ -2,6 +2,7 @@ import io
 
 from app.extensions import db
 from app.models import Provider, RefreshToken, User
+from app.services.email_service import EmailService
 from app.services.oauth_service import OAuthProfile, OAuthVerifier
 from app.services.storage_service import StorageService
 
@@ -103,6 +104,45 @@ def test_logout_revokes_refresh_token(client):
     assert db.session.query(RefreshToken).filter_by(revoked=True).count() == 1
     refreshed = client.post("/auth/refresh", json={"refresh_token": created["refresh_token"]})
     assert refreshed.status_code == 401
+
+
+def test_forgot_and_reset_password(client, monkeypatch):
+    register(client)
+    sent = {}
+
+    def fake_send(_self, to_email, reset_url, full_name=None):
+        sent["to_email"] = to_email
+        sent["reset_url"] = reset_url
+        sent["full_name"] = full_name
+
+    monkeypatch.setattr(EmailService, "send_password_reset", fake_send)
+
+    forgot = client.post("/auth/forgot-password", json={"email": "ada@example.com"})
+    assert forgot.status_code == 200
+    assert sent["to_email"] == "ada@example.com"
+
+    token = sent["reset_url"].split("token=", 1)[1]
+    reset = client.post("/auth/reset-password", json={"token": token, "password": "new-correct-password"})
+    assert reset.status_code == 200
+
+    old_login = client.post("/auth/login", json={"email": "ada@example.com", "password": "correct-password"})
+    assert old_login.status_code == 401
+    new_login = client.post("/auth/login", json={"email": "ada@example.com", "password": "new-correct-password"})
+    assert new_login.status_code == 200
+
+
+def test_forgot_password_does_not_reveal_unknown_email(client, monkeypatch):
+    called = False
+
+    def fake_send(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(EmailService, "send_password_reset", fake_send)
+
+    response = client.post("/auth/forgot-password", json={"email": "missing@example.com"})
+    assert response.status_code == 200
+    assert called is False
 
 
 def test_get_and_update_me(client):

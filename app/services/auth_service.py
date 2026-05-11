@@ -1,23 +1,29 @@
+import hashlib
+from datetime import datetime, timezone
 from http import HTTPStatus
 from uuid import uuid4
 
+import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError, VerificationError
 from sqlalchemy.exc import IntegrityError
 
 from app.errors import AppError
 from app.extensions import db
-from app.models import Provider, Role, Status, User
+from app.models import Provider, RefreshToken, Role, Status, User
 from app.repositories import UserRepository
+from app.services.email_service import EmailService
 from app.services.oauth_service import OAuthVerifier
-from app.services.token_service import TokenService
+from app.services.token_service import TokenService, parse_uuid
 
 
 class AuthService:
     def __init__(self, config):
+        self.config = config
         self.users = UserRepository()
         self.tokens = TokenService(config)
         self.oauth = OAuthVerifier(config)
+        self.email = EmailService(config)
         self.hasher = PasswordHasher()
 
     def register(self, data):
@@ -61,6 +67,29 @@ class AuthService:
         db.session.commit()
         return pair
 
+    def forgot_password(self, data):
+        user = self.users.get_by_email(data["email"])
+        if user and user.email and user.password_hash and user.status == Status.ACTIVE:
+            token = self._issue_password_reset_token(user)
+            reset_url = f"{self.config.APP_PUBLIC_URL.rstrip('/')}/reset-password?token={token}"
+            self.email.send_password_reset(user.email, reset_url, user.full_name)
+        return {"message": "If that email exists, a password reset link has been sent."}
+
+    def reset_password(self, data):
+        payload = self._verify_password_reset_token(data["token"])
+        user = self.users.get_by_id(parse_uuid(payload["sub"]))
+        if user is None or user.status != Status.ACTIVE:
+            raise AppError("INVALID_RESET_TOKEN", "Password reset token is invalid or expired.", HTTPStatus.BAD_REQUEST)
+        if user.provider != Provider.LOCAL:
+            raise AppError("PASSWORD_LOGIN_NOT_AVAILABLE", "This account uses social login.", HTTPStatus.BAD_REQUEST)
+        if payload.get("pwd") != self._password_fingerprint(user):
+            raise AppError("INVALID_RESET_TOKEN", "Password reset token is invalid or expired.", HTTPStatus.BAD_REQUEST)
+
+        user.password_hash = self.hasher.hash(data["password"])
+        db.session.query(RefreshToken).filter_by(user_id=user.id, revoked=False).update({"revoked": True})
+        db.session.commit()
+        return {"message": "Password has been reset successfully."}
+
     def oauth_login(self, provider: Provider, payload: dict):
         profile = self.oauth.verify_google(payload) if provider == Provider.GOOGLE else self.oauth.verify_facebook(payload)
         if not profile.provider_id:
@@ -102,3 +131,27 @@ class AuthService:
         except IntegrityError as exc:
             db.session.rollback()
             raise AppError("DUPLICATE_USER", "User already exists.", HTTPStatus.CONFLICT) from exc
+
+    def _issue_password_reset_token(self, user: User) -> str:
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": str(user.id),
+            "purpose": "password_reset",
+            "pwd": self._password_fingerprint(user),
+            "iat": int(now.timestamp()),
+            "exp": int(now.timestamp()) + self.config.PASSWORD_RESET_TOKEN_TTL_SECONDS,
+        }
+        return jwt.encode(payload, self.config.JWT_SECRET, algorithm=self.config.JWT_ALGORITHM)
+
+    def _verify_password_reset_token(self, token: str) -> dict:
+        try:
+            payload = jwt.decode(token, self.config.JWT_SECRET, algorithms=[self.config.JWT_ALGORITHM])
+        except jwt.PyJWTError as exc:
+            raise AppError("INVALID_RESET_TOKEN", "Password reset token is invalid or expired.", HTTPStatus.BAD_REQUEST) from exc
+        if payload.get("purpose") != "password_reset":
+            raise AppError("INVALID_RESET_TOKEN", "Password reset token is invalid or expired.", HTTPStatus.BAD_REQUEST)
+        return payload
+
+    @staticmethod
+    def _password_fingerprint(user: User) -> str:
+        return hashlib.sha256((user.password_hash or "").encode("utf-8")).hexdigest()
