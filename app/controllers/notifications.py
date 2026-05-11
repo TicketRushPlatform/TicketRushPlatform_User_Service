@@ -1,9 +1,11 @@
-from flask import Blueprint, g
+from flask import Blueprint, current_app, g, request
 
 from app.decorators import require_auth
 from app.errors import AppError
 from app.extensions import db
 from app.repositories import NotificationRepository
+from app.schemas import BookingConfirmationEmailSchema
+from app.services.email_service import EmailService
 
 bp = Blueprint("notifications", __name__, url_prefix="/notifications")
 
@@ -37,6 +39,17 @@ def unread_count():
     repo = NotificationRepository()
     count = repo.count_unread(g.current_user.id)
     return {"count": count}
+
+
+@bp.post("/booking-confirmation-email")
+@require_auth()
+def send_booking_confirmation_email():
+    """Email QR tickets and booking details to the current user."""
+    if not g.current_user.email:
+        raise AppError("EMAIL_NOT_AVAILABLE", "Current user does not have an email address.", 400)
+    data = BookingConfirmationEmailSchema().load(request.get_json(silent=True) or {})
+    EmailService(current_app.config["APP_CONFIG"]).send_booking_confirmation(g.current_user.email, data)
+    return {"message": "Booking confirmation email sent."}
 
 
 @bp.patch("/<uuid:notification_id>/read")

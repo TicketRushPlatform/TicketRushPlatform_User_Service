@@ -20,6 +20,15 @@ class LogoutSchema(RefreshSchema):
     pass
 
 
+class ForgotPasswordSchema(Schema):
+    email = fields.Email(required=True)
+
+
+class ResetPasswordSchema(Schema):
+    token = fields.String(required=True, validate=validate.Length(min=16))
+    password = fields.String(required=True, validate=validate.Length(min=8, max=128))
+
+
 class OAuthSchema(Schema):
     id_token = fields.String(load_default=None)
     access_token = fields.String(load_default=None)
@@ -68,6 +77,14 @@ class RoleUpdateSchema(Schema):
     permissions = fields.List(fields.String(validate=validate.Length(min=2, max=128)), load_default=None, allow_none=True)
     permissions_add = fields.List(fields.String(validate=validate.Length(min=2, max=128)), load_default=list)
     permissions_remove = fields.List(fields.String(validate=validate.Length(min=2, max=128)), load_default=list)
+
+
+class BookingConfirmationEmailSchema(Schema):
+    booking = fields.Dict(required=True)
+    event = fields.Dict(required=True)
+    showtime = fields.Dict(required=True)
+    seats = fields.List(fields.Dict(), load_default=list)
+    tickets = fields.List(fields.Dict(), load_default=list)
 
 
 class TokenPairSchema(Schema):

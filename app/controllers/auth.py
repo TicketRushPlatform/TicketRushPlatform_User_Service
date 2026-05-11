@@ -2,7 +2,7 @@ from flask import Blueprint, current_app, request
 
 from app.extensions import limiter
 from app.models import Provider
-from app.schemas import LoginSchema, LogoutSchema, OAuthSchema, RefreshSchema, RegisterSchema
+from app.schemas import ForgotPasswordSchema, LoginSchema, LogoutSchema, OAuthSchema, RefreshSchema, RegisterSchema, ResetPasswordSchema
 from app.services.auth_service import AuthService
 from app.services.token_service import TokenService
 
@@ -141,6 +141,20 @@ def logout():
     data = LogoutSchema().load(request.get_json(silent=True) or {})
     TokenService(current_app.config["APP_CONFIG"]).revoke_refresh(data["refresh_token"])
     return "", 204
+
+
+@bp.post("/forgot-password")
+@limiter.limit("5 per minute")
+def forgot_password():
+    data = ForgotPasswordSchema().load(request.get_json(silent=True) or {})
+    return AuthService(current_app.config["APP_CONFIG"]).forgot_password(data)
+
+
+@bp.post("/reset-password")
+@limiter.limit("5 per minute")
+def reset_password():
+    data = ResetPasswordSchema().load(request.get_json(silent=True) or {})
+    return AuthService(current_app.config["APP_CONFIG"]).reset_password(data)
 
 
 @bp.post("/oauth/google")

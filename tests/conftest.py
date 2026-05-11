@@ -28,6 +28,15 @@ class TestConfig:
     S3_REGION = "us-east-1"
     S3_PUBLIC_BASE_URL = "http://minio:9000/ticketrush-media"
     UPLOAD_MAX_BYTES = 5 * 1024 * 1024
+    APP_PUBLIC_URL = "http://localhost:3000"
+    PASSWORD_RESET_TOKEN_TTL_SECONDS = 1800
+    SMTP_HOST = ""
+    SMTP_PORT = 587
+    SMTP_USERNAME = ""
+    SMTP_PASSWORD = ""
+    SMTP_FROM_EMAIL = "no-reply@ticketrush.local"
+    SMTP_FROM_NAME = "TicketRush"
+    SMTP_USE_TLS = True
 
     @property
     def SQLALCHEMY_DATABASE_URI(self):
