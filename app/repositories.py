@@ -1,5 +1,9 @@
+import uuid
+
 from app.extensions import db
 from app.models import Notification, Provider, RefreshToken, RoleDefinition, RolePermission, User, UserRole
+
+DELETED_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
 class UserRepository:
@@ -17,7 +21,7 @@ class UserRepository:
         return user
 
     def list_all(self):
-        return User.query.order_by(User.created_at.desc()).all()
+        return User.query.filter(User.id != DELETED_USER_ID).order_by(User.created_at.desc()).all()
 
     def delete(self, user: User):
         db.session.delete(user)

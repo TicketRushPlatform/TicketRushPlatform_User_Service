@@ -1,7 +1,10 @@
 import io
 
+from sqlalchemy import text
+
 from app.extensions import db
-from app.models import Provider, RefreshToken, User
+from app.models import Provider, RefreshToken, Role, User
+from app.repositories import DELETED_USER_ID
 from app.services.email_service import EmailService
 from app.services.oauth_service import OAuthProfile, OAuthVerifier
 from app.services.storage_service import StorageService
@@ -191,3 +194,27 @@ def test_upload_me_avatar_returns_url(client, monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json()["url"].startswith("http://localhost:9000/ticketrush-media/")
+
+def test_admin_delete_user_reassigns_booking_references(client):
+    register(client, email="admin@example.com")
+    admin = User.query.filter_by(email="admin@example.com").one()
+    admin.role = Role.ADMIN
+    db.session.commit()
+    admin_token = client.post("/auth/login", json={"email": "admin@example.com", "password": "correct-password"}).get_json()["access_token"]
+
+    register(client, email="buyer@example.com")
+    buyer = User.query.filter_by(email="buyer@example.com").one()
+
+    db.session.execute(text("CREATE TABLE bookings (id TEXT PRIMARY KEY, user_id TEXT NOT NULL)"))
+    db.session.execute(text("INSERT INTO bookings (id, user_id) VALUES ('booking-1', :user_id)"), {"user_id": str(buyer.id)})
+    db.session.commit()
+
+    response = client.delete(f"/users/{buyer.id}", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert response.status_code == 204
+    assert db.session.get(User, buyer.id) is None
+    booking_user_id = db.session.execute(text("SELECT user_id FROM bookings WHERE id = 'booking-1'")).scalar_one()
+    assert booking_user_id == str(DELETED_USER_ID)
+
+    listed = client.get("/users", headers={"Authorization": f"Bearer {admin_token}"}).get_json()
+    assert all(item["id"] != str(DELETED_USER_ID) for item in listed)

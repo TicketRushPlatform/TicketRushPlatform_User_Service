@@ -1,16 +1,60 @@
 from argon2 import PasswordHasher
 from flask import Blueprint, current_app, g, request
+from sqlalchemy import inspect, text
 
 from app.decorators import require_auth, require_permission
 from app.errors import AppError
 from app.extensions import db
-from app.repositories import UserRepository
+from app.repositories import DELETED_USER_ID, UserRepository
 from app.models import Provider, Role, Status, User
 from app.schemas import AdminCreateUserSchema, AdminUpdateUserSchema, UpdateMeSchema, user_to_dict
 from app.services.storage_service import StorageService
 
 bp = Blueprint("users", __name__, url_prefix="/users")
 hasher = PasswordHasher()
+
+
+def ensure_deleted_user_placeholder():
+    placeholder = db.session.get(User, DELETED_USER_ID)
+    if placeholder is not None:
+        return placeholder
+
+    placeholder = User(
+        id=DELETED_USER_ID,
+        email=None,
+        password_hash=None,
+        full_name="Deleted User",
+        provider=Provider.LOCAL,
+        role=Role.USER,
+        status=Status.BLOCKED,
+    )
+    db.session.add(placeholder)
+    db.session.flush()
+    return placeholder
+
+
+def table_has_column(table_name: str, column_name: str) -> bool:
+    inspector = inspect(db.session.connection())
+    if not inspector.has_table(table_name):
+        return False
+    return any(column["name"] == column_name for column in inspector.get_columns(table_name))
+
+
+def reassign_external_user_references(user_id):
+    ensure_deleted_user_placeholder()
+    params = {"deleted_user_id": str(DELETED_USER_ID), "user_id": str(user_id)}
+    deleted_value = "CAST(:deleted_user_id AS uuid)" if db.engine.dialect.name == "postgresql" else ":deleted_user_id"
+    user_value = "CAST(:user_id AS uuid)" if db.engine.dialect.name == "postgresql" else ":user_id"
+    if table_has_column("bookings", "user_id"):
+        db.session.execute(
+            text(f"UPDATE bookings SET user_id = {deleted_value} WHERE user_id = {user_value}"),
+            params,
+        )
+    if table_has_column("events", "creator_id"):
+        db.session.execute(
+            text(f"UPDATE events SET creator_id = {deleted_value} WHERE creator_id = {user_value}"),
+            params,
+        )
 
 
 @bp.get("/me")
@@ -386,7 +430,10 @@ def delete_user(user_id):
         raise AppError("USER_NOT_FOUND", "User was not found.", 404)
     if user.id == g.current_user.id:
         raise AppError("FORBIDDEN", "You cannot delete your own account.", 403)
+    if user.id == DELETED_USER_ID:
+        raise AppError("FORBIDDEN", "The deleted-user placeholder cannot be deleted.", 403)
 
+    reassign_external_user_references(user.id)
     repo.delete(user)
     db.session.commit()
     return "", 204
