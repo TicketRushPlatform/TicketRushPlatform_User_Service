@@ -5,7 +5,7 @@ from app.errors import AppError
 from app.extensions import db
 from app.repositories import NotificationRepository
 from app.schemas import BookingConfirmationEmailSchema
-from app.services.email_service import EmailService
+from app.services.email_dispatcher import EmailDispatcher
 
 bp = Blueprint("notifications", __name__, url_prefix="/notifications")
 
@@ -48,8 +48,8 @@ def send_booking_confirmation_email():
     if not g.current_user.email:
         raise AppError("EMAIL_NOT_AVAILABLE", "Current user does not have an email address.", 400)
     data = BookingConfirmationEmailSchema().load(request.get_json(silent=True) or {})
-    EmailService(current_app.config["APP_CONFIG"]).send_booking_confirmation(g.current_user.email, data)
-    return {"message": "Booking confirmation email sent."}
+    EmailDispatcher(current_app.config["APP_CONFIG"]).send_booking_confirmation(g.current_user.email, data)
+    return {"message": "Booking confirmation email queued."}
 
 
 @bp.patch("/<uuid:notification_id>/read")
