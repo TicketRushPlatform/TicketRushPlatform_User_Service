@@ -12,7 +12,7 @@ from app.errors import AppError
 from app.extensions import db
 from app.models import Provider, RefreshToken, Role, Status, User
 from app.repositories import UserRepository
-from app.services.email_service import EmailService
+from app.services.email_dispatcher import EmailDispatcher
 from app.services.oauth_service import OAuthVerifier
 from app.services.token_service import TokenService, parse_uuid
 
@@ -23,7 +23,7 @@ class AuthService:
         self.users = UserRepository()
         self.tokens = TokenService(config)
         self.oauth = OAuthVerifier(config)
-        self.email = EmailService(config)
+        self.email = EmailDispatcher(config)
         self.hasher = PasswordHasher()
 
     def register(self, data):

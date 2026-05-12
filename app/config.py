@@ -21,6 +21,7 @@ class Config:
     FACEBOOK_APP_ID: str = os.getenv("FACEBOOK_APP_ID", "")
     FACEBOOK_APP_SECRET: str = os.getenv("FACEBOOK_APP_SECRET", "")
     REDIS_URL: str = os.getenv("REDIS_URL", "")
+    EMAIL_QUEUE_NAME: str = os.getenv("EMAIL_QUEUE_NAME", "user_api:email_jobs")
     RATE_LIMIT_STORAGE_URL: str = os.getenv("RATE_LIMIT_STORAGE_URL", "memory://")
     ENABLE_SWAGGER: bool = _bool(os.getenv("ENABLE_SWAGGER"), True)
     TESTING: bool = _bool(os.getenv("TESTING"))

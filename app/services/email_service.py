@@ -1,5 +1,6 @@
 import io
 import logging
+import socket
 import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -13,7 +14,7 @@ class EmailService:
         self.config = config
         self.logger = logging.getLogger(__name__)
 
-    def send_password_reset(self, to_email: str, reset_url: str, full_name: str | None = None) -> None:
+    def send_password_reset(self, to_email: str, reset_url: str, full_name: str | None = None) -> bool:
         name = full_name or "TicketRush user"
         html = f"""
         <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
@@ -25,9 +26,9 @@ class EmailService:
         </div>
         """
         text = f"Hi {name},\n\nReset your TicketRush password: {reset_url}\n\nIf you did not request this, ignore this email."
-        self._send(to_email, "Reset your TicketRush password", text, html)
+        return self._send(to_email, "Reset your TicketRush password", text, html)
 
-    def send_booking_confirmation(self, to_email: str, payload: dict) -> None:
+    def send_booking_confirmation(self, to_email: str, payload: dict) -> bool:
         event = payload.get("event") or {}
         showtime = payload.get("showtime") or {}
         booking = payload.get("booking") or {}
@@ -82,12 +83,12 @@ class EmailService:
             f"Booking confirmed\n\nEvent: {event_name}\nBooking: {booking.get('id') or ''}\n"
             f"Showtime: {showtime_line}\nSeats: {seat_labels}\nTotal: {total_amount}\n"
         )
-        self._send(to_email, f"Your TicketRush tickets for {event_name}", text, html, attachments)
+        return self._send(to_email, f"Your TicketRush tickets for {event_name}", text, html, attachments)
 
-    def _send(self, to_email: str, subject: str, text: str, html: str, inline_pngs: list[tuple[str, bytes]] | None = None) -> None:
+    def _send(self, to_email: str, subject: str, text: str, html: str, inline_pngs: list[tuple[str, bytes]] | None = None) -> bool:
         if not getattr(self.config, "SMTP_HOST", ""):
             self.logger.info("SMTP is not configured; email skipped", extra={"to": to_email, "subject": subject})
-            return
+            return False
 
         message = EmailMessage()
         message["Subject"] = subject
@@ -100,12 +101,27 @@ class EmailService:
         for content_id, data in inline_pngs or []:
             html_part.add_related(data, maintype="image", subtype="png", cid=f"<{content_id}>")
 
-        with smtplib.SMTP(self.config.SMTP_HOST, self.config.SMTP_PORT, timeout=10) as smtp:
-            if getattr(self.config, "SMTP_USE_TLS", True):
-                smtp.starttls()
-            if getattr(self.config, "SMTP_USERNAME", ""):
-                smtp.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
-            smtp.send_message(message)
+        try:
+            with smtplib.SMTP(self.config.SMTP_HOST, self.config.SMTP_PORT, timeout=10) as smtp:
+                if getattr(self.config, "SMTP_USE_TLS", True):
+                    smtp.starttls()
+                if getattr(self.config, "SMTP_USERNAME", ""):
+                    smtp.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
+                smtp.send_message(message)
+        except (OSError, TimeoutError, socket.timeout, smtplib.SMTPException) as exc:
+            self.logger.warning(
+                "Email delivery failed",
+                extra={
+                    "to": to_email,
+                    "subject": subject,
+                    "smtp_host": getattr(self.config, "SMTP_HOST", ""),
+                    "smtp_port": getattr(self.config, "SMTP_PORT", ""),
+                    "error": str(exc),
+                },
+            )
+            return False
+
+        return True
 
     @staticmethod
     def _qr_png(payload: str) -> bytes:

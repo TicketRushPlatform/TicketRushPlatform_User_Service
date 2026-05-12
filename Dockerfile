@@ -16,4 +16,4 @@ COPY . .
 USER app
 EXPOSE 8082
 
-CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${SERVER_PORT:-8082} wsgi:app"]
+CMD ["sh", "scripts/start_with_email_worker.sh"]
