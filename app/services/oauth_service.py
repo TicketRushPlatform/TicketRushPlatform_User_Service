@@ -3,6 +3,10 @@ from http import HTTPStatus
 import requests
 
 from app.errors import AppError
+from app.services.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+
+google_oauth_breaker = CircuitBreaker("google_oauth", failure_threshold=3, recovery_timeout_seconds=10)
+facebook_oauth_breaker = CircuitBreaker("facebook_oauth", failure_threshold=3, recovery_timeout_seconds=10)
 
 
 class OAuthProfile:
@@ -17,12 +21,38 @@ class OAuthVerifier:
     def __init__(self, config):
         self.config = config
 
+    def _request_with_breaker(self, breaker: CircuitBreaker, method: str, url: str, **kwargs):
+        def protected_request():
+            response = requests.request(method, url, **kwargs)
+            if response.status_code >= 500:
+                raise requests.HTTPError(f"OAuth provider returned {response.status_code}", response=response)
+            return response
+
+        try:
+            return breaker.call(protected_request)
+        except CircuitBreakerOpenError as exc:
+            raise AppError(
+                "OAUTH_PROVIDER_UNAVAILABLE",
+                "OAuth provider is temporarily unavailable. Please try again later.",
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                breaker.snapshot(),
+            ) from exc
+        except requests.RequestException as exc:
+            raise AppError(
+                "OAUTH_PROVIDER_UNAVAILABLE",
+                "OAuth provider is temporarily unavailable. Please try again later.",
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                breaker.snapshot(),
+            ) from exc
+
     def verify_google(self, payload: dict) -> OAuthProfile:
         token = payload.get("id_token") or payload.get("access_token")
         if not token and payload.get("authorization_code"):
             if not self.config.GOOGLE_CLIENT_ID or not self.config.GOOGLE_CLIENT_SECRET or not payload.get("redirect_uri"):
                 raise AppError("OAUTH_CONFIG_REQUIRED", "Google authorization code exchange is not configured.", HTTPStatus.BAD_REQUEST)
-            exchanged = requests.post(
+            exchanged = self._request_with_breaker(
+                google_oauth_breaker,
+                "POST",
                 "https://oauth2.googleapis.com/token",
                 data={
                     "code": payload["authorization_code"],
@@ -40,9 +70,9 @@ class OAuthVerifier:
         if not token:
             raise AppError("UNSUPPORTED_OAUTH_FLOW", "Google authorization code exchange is not configured.", HTTPStatus.BAD_REQUEST)
 
-        response = requests.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": token}, timeout=5)
+        response = self._request_with_breaker(google_oauth_breaker, "GET", "https://oauth2.googleapis.com/tokeninfo", params={"id_token": token}, timeout=5)
         if response.status_code != 200 and payload.get("access_token"):
-            response = requests.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {token}"}, timeout=5)
+            response = self._request_with_breaker(google_oauth_breaker, "GET", "https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {token}"}, timeout=5)
         if response.status_code != 200:
             raise AppError("INVALID_OAUTH_TOKEN", "Google token verification failed.", HTTPStatus.UNAUTHORIZED)
 
@@ -67,7 +97,9 @@ class OAuthVerifier:
         if not access_token and payload.get("authorization_code"):
             if not self.config.FACEBOOK_APP_ID or not self.config.FACEBOOK_APP_SECRET or not payload.get("redirect_uri"):
                 raise AppError("OAUTH_CONFIG_REQUIRED", "Facebook authorization code exchange is not configured.", HTTPStatus.BAD_REQUEST)
-            exchanged = requests.get(
+            exchanged = self._request_with_breaker(
+                facebook_oauth_breaker,
+                "GET",
                 "https://graph.facebook.com/v19.0/oauth/access_token",
                 params={
                     "client_id": self.config.FACEBOOK_APP_ID,
@@ -86,7 +118,9 @@ class OAuthVerifier:
 
         if self.config.FACEBOOK_APP_ID and self.config.FACEBOOK_APP_SECRET:
             app_token = f"{self.config.FACEBOOK_APP_ID}|{self.config.FACEBOOK_APP_SECRET}"
-            debug = requests.get(
+            debug = self._request_with_breaker(
+                facebook_oauth_breaker,
+                "GET",
                 "https://graph.facebook.com/debug_token",
                 params={"input_token": access_token, "access_token": app_token},
                 timeout=5,
@@ -94,7 +128,9 @@ class OAuthVerifier:
             if debug.status_code != 200 or not debug.json().get("data", {}).get("is_valid"):
                 raise AppError("INVALID_OAUTH_TOKEN", "Facebook token verification failed.", HTTPStatus.UNAUTHORIZED)
 
-        profile = requests.get(
+        profile = self._request_with_breaker(
+            facebook_oauth_breaker,
+            "GET",
             "https://graph.facebook.com/me",
             params={"fields": "id,name,email,picture", "access_token": access_token},
             timeout=5,
