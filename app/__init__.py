@@ -4,6 +4,7 @@ from flask import Flask
 from app.config import Config
 from app.errors import register_error_handlers
 from app.extensions import db, limiter
+from app.observability import init_metrics
 
 
 def create_app(config: Config | None = None):
@@ -17,6 +18,7 @@ def create_app(config: Config | None = None):
 
     db.init_app(app)
     limiter.init_app(app)
+    init_metrics(app)
 
     from app.controllers.auth import bp as auth_bp
     from app.controllers.notifications import bp as notifications_bp
